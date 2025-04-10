@@ -1,0 +1,83 @@
+Pipeline script to compile in one slave and deploy on another slave
+*****************************************************************************************
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Git clone') { 
+            steps {
+                git branch: 'main', url: 'https://github.com/PriyaPrince/Demo-java.git'
+            }
+        }
+
+        stage('Build on Slave-2') {
+            agent { label 'slave-2' } // Compilation happens on Slave-2
+            steps {
+                sh 'mvn clean package'
+                stash name: 'built-war', includes: 'target/*.war'
+            }
+        }
+
+        stage('Deploy on Slave-3') {
+            agent { label 'slave-3' } // Deployment happens on Slave-3
+            steps {
+                unstash 'built-war'
+
+                // Copy WAR file to Tomcat webapps folder on Slave-3
+                sh 'sudo cp target/*.war /home/ubuntu/apache-tomcat-10.1.39/webapps/'
+
+                // Restart Tomcat on Slave-3
+                sh '''
+                sudo /home/ubuntu/apache-tomcat-10.1.39/bin/shutdown.sh
+                sleep 5
+                sudo /home/ubuntu/apache-tomcat-10.1.39/bin/startup.sh
+                '''
+            }
+        }
+    }
+}
+
+Pipeline script to compile in one slave and deploy on another remote server
+*****************************************************************************************
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Git clone') { 
+            steps {
+                git branch: 'main', url: 'https://github.com/PriyaPrince/Demo-java.git'
+            }
+        }
+
+        stage('Build on Slave-2') {
+            agent { label 'slave-2' } // Compilation happens on Slave-2
+            steps {
+                sh 'mvn clean package'
+                stash name: 'built-war', includes: 'target/*.war'
+            }
+        }
+
+        stage('Deploy on Remote Server') {
+            agent { label 'slave-2' } // Running the deployment script from Slave-2
+            steps {
+                unstash 'built-war'
+
+                // Copy WAR file to remote server using SCP
+                sh '''
+                scp -i /home/ubuntu/.ssh/id_rsa target/*.war ubuntu@<REMOTE_SERVER_IP>:/home/ubuntu/apache-tomcat-10.1.39/webapps/
+                '''
+
+                // Restart Tomcat remotely via SSH
+                sh '''
+                ssh -i /home/ubuntu/.ssh/id_rsa ubuntu@<REMOTE_SERVER_IP> << EOF
+                sudo /home/ubuntu/apache-tomcat-10.1.39/bin/shutdown.sh
+                sleep 5
+                sudo /home/ubuntu/apache-tomcat-10.1.39/bin/startup.sh
+                EOF
+                '''
+            }
+        }
+    }
+}
